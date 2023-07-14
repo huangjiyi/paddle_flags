@@ -57,11 +57,13 @@ class Flag {
 public:
   Flag(std::string name,
        std::string help,
+       std::string file,
        FlagType type,
        void* current_val,
        void* default_val)
     : name_(name),
       help_(help),
+      file_(file),
       type_(type),
       current_val_(current_val),
       default_val_(default_val) {
@@ -71,11 +73,12 @@ public:
 private:
   friend class FlagRegistry;
 
-  const std::string name_;
-  const std::string help_;
-  const FlagType type_;
-  void* current_val_;
-  void* default_val_;
+  const std::string name_;  // flag name
+  const std::string help_;  // help message
+  const std::string file_;  // file name where the flag is defined
+  const FlagType type_;     // flag value type
+  void* current_val_;       // current flag value
+  void* default_val_;       // default flag value
 };
 
 class FlagRegistry {
@@ -94,22 +97,34 @@ private:
 };
 
 void FlagRegistry::RegisterFlag(Flag* flag) {
-  flags_[flag->name_] = flag;
+  LOG("INFO: register flag \"" + flag->name_ + "\" which defined in file: " + flag->file_);
+  // Defining a flag with the same name and type twice will raise a compile
+  // error. While defining a flag with the same name and different type will
+  // not (in different namespaces), but this is not allowed. So we check 
+  // the flag name is whether registered here.
+  auto iter = flags_.find(flag->name_);
+  if (iter != flags_.end()) {
+    LOG("ERROR: flag \"" + flag->name_ + "\" has been defined in " + iter->second->file_);
+  } else {
+    flags_[flag->name_] = flag;
+  }
 }
 
 template <typename T>
 FlagRegisterer::FlagRegisterer(std::string name,
                                std::string help,
+                               std::string file,
                                T* current_value,
                                T* default_value) {
   FlagType type = FlagTypeTraits<T>::Type;
-  Flag* flag = new Flag(name, help, type, current_value, default_value);
+  Flag* flag = new Flag(name, help, file, type, current_value, default_value);
   FlagRegistry::Instance()->RegisterFlag(flag);
 }
 
-#define INSTANTIATE_FLAG_REGISTERER(type)  \
-  template FlagRegisterer::FlagRegisterer( \
-    std::string name, std::string help,    \
+// Instantiate FlagRegisterer for supported types.
+#define INSTANTIATE_FLAG_REGISTERER(type)                 \
+  template FlagRegisterer::FlagRegisterer(                \
+    std::string name, std::string help, std::string file, \
     type* current_value, type* default_value)
 
 INSTANTIATE_FLAG_REGISTERER(bool);

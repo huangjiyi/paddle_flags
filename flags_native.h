@@ -16,6 +16,10 @@
 
 #include <string>
 
+#include <iostream>
+#define LOG(t) std::cout << t << std::endl
+#define LOG_VAR(var) std::cout << #var << ": " << var << std::endl
+
 #if defined(_WIN32)
 #define PHI_EXPORT_FLAG __declspec(dllexport)
 #define PHI_IMPORT_FLAG __declspec(dllimport)
@@ -23,6 +27,10 @@
 #define PHI_EXPORT_FLAG
 #define PHI_IMPORT_FLAG
 #endif  // _WIN32
+
+namespace phi {
+void ParseCommandLineFlags(int* argc, char*** argv);
+}  // namespace phi
 
 // ----------------------------DECLARE FLAGS----------------------------
 #define PHI_DECLARE_FLAG(type, name)          \
@@ -45,22 +53,23 @@ public:
   template <typename T>
   FlagRegisterer(std::string name,
                  std::string help,
+                 std::string file,
                  T* current_value,
                  T* default_value);
 };
 }  // namespace phi
 
 // ----------------------------DEFINE FLAGS----------------------------
-#define PHI_DEFINE_FLAG(type, name, default_value, help_string)    \
-  namespace phi {                                                  \
-  namespace flag_##type {                                          \
-    static type FLAGS_##name##_default = default_value;            \
-    PHI_EXPORT_FLAG type FLAGS_##name = FLAGS_##name##_default;    \
-    /* Register FLAG */                                            \
-    static phi::FlagRegisterer Flag##name##_FlagRegisterer(        \
-      #name, help_string, &FLAGS_##name, &FLAGS_##name##_default); \
-  }                                                                \
-  }                                                                \
+#define PHI_DEFINE_FLAG(type, name, default_value, help_string)              \
+  namespace phi {                                                            \
+  namespace flag_##type {                                                    \
+    static type FLAGS_##name##_default = default_value;                      \
+    PHI_EXPORT_FLAG type FLAGS_##name = FLAGS_##name##_default;              \
+    /* Register FLAG */                                                      \
+    static phi::FlagRegisterer Flag##name##_FlagRegisterer(                  \
+      #name, help_string, __FILE__, &FLAGS_##name, &FLAGS_##name##_default); \
+  }                                                                          \
+  }                                                                          \
   using phi::flag_##type::FLAGS_##name
 
 #define PHI_DEFINE_bool(name, val, txt) \

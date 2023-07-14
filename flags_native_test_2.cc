@@ -13,13 +13,5 @@
 // limitations under the License.
 
 #include "flags_native.h"
-#include "flags_registry.h"
 
-namespace phi {
-
-void ParseCommandLineFlags(int* argc, char*** argv) {
-  int arg_num = *argc;
-  LOG_VAR(arg_num);
-}
-
-}  // namespace phi
+PHI_DEFINE_string(name, "Alice", "test help string...");

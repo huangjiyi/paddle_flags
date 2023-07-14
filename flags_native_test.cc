@@ -14,21 +14,11 @@
 
 #include "flags_native.h"
 
-#include <iostream>
-
-#define LOG(t) std::cout << t << std::endl
-#define LOG_VAR(var) std::cout << #var << ": " << var << std::endl
-
-namespace phi {
-namespace test {
-
-}
-}
-
 PHI_DEFINE_int32(name, 16, "test help string...");
 
 int main(int argc, char* argv[]) {
-  LOG("main start");
+  phi::ParseCommandLineFlags(&argc, &argv);
+  LOG("main function start...");
   LOG_VAR(FLAGS_name);
 
   return 0;
