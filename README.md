@@ -244,3 +244,19 @@ set(C10_USE_GFLAGS ${USE_GFLAGS})
 
 - `ParseCommandLineFlags(int* pargc, char*** pargv)`：解析命令行参数，代码主要就是解析命令行参数的一些逻辑，这部分可以看 `c10/util/flags_use_no_gflags.cpp` 中的代码，在每个命令行参数被解析完后，会在通过 `C10FlagsRegistry()->Create(key, value)` 给注册表中对应的 Flag 赋值。
 
+### 对比分析
+
+**gflags** 
+
+- 优点：提供的功能很多，同时各方面都考虑的很完善
+
+- 缺点：很多功能 Paddle 不太需要，并且一些代码实现有些过度设计的感觉，整体代码比较复杂
+
+**pytorch**
+
+- 优点：整体实现比较简洁，方便理解，同时设计比较巧妙：pytorch 没有设计 Flag 数据结构，只针对每个 Flag 设计了对应的赋值函数，然后在注册表中只存放 name, help_string, 赋值函数
+
+- 缺点：只实现了最主要的功能，同时不方便扩展
+
+## 四、设计思路与实现方案
+
