@@ -191,6 +191,28 @@ void ParseCommandLineFlags(int* pargc, char*** pargv) {
   }
 }
 
+void FlagRegistry::RegisterFlag(Flag* flag) {
+  LOG("INFO: register flag \"" + flag->name_ + "\" which defined in file: " + flag->file_);
+  // Defining a flag with the same name and type twice will raise a compile
+  // error. While defining a flag with the same name and different type will
+  // not (in different namespaces), but this is not allowed. So we check
+  // the flag name is whether registered here.
+  auto iter = flags_.find(flag->name_);
+  if (iter != flags_.end()) {
+    LOG("ERROR: flag \"" + flag->name_ + "\" has been defined in " + iter->second->file_);
+  } else {
+    flags_[flag->name_] = flag;
+  }
+}
+
+void FlagRegistry::SetFlagValue(const std::string& name, const std::string& value) {
+  flags_[name]->SetValue(value);
+}
+
+bool FlagRegistry::Find(const std::string& name) {
+  return flags_.find(name) != flags_.end();
+}
+
 void Flag::SetValue(const std::string& value) {
   switch (type_) {
   case FlagType::BOOL: {
@@ -240,29 +262,6 @@ void Flag::SetValue(const std::string& value) {
     break;
   }
   }
-}
-
-void FlagRegistry::RegisterFlag(Flag* flag) {
-  LOG("INFO: register flag \"" + flag->name_ + "\" which defined in file: " + flag->file_);
-  // Defining a flag with the same name and type twice will raise a compile
-  // error. While defining a flag with the same name and different type will
-  // not (in different namespaces), but this is not allowed. So we check
-  // the flag name is whether registered here.
-  auto iter = flags_.find(flag->name_);
-  if (iter != flags_.end()) {
-    LOG("ERROR: flag \"" + flag->name_ + "\" has been defined in " + iter->second->file_);
-  } else {
-    flags_[flag->name_] = flag;
-  }
-}
-
-void FlagRegistry::SetFlagValue(const std::string& name, const std::string& value) {
-  flags_[name]->SetValue(value);
-}
-
-bool FlagRegistry::Find(const std::string& name) {
-  auto iter = flags_.find(name);
-  return iter != flags_.end();
 }
 
 }  // namespace phi
