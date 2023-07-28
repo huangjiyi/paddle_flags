@@ -551,7 +551,7 @@ void ParseCommandLineFlags(int* pargc, char*** pargv) {
 
 #### 报错机制
 
-在代码中还需要设计一套报错机制，主要包括以下几种情况：
+在代码中还需要设计一套报错机制，计划利用 Paddle 中的报错机制，报错主要包括以下几种情况：
 
 - 针对 `ParseCommandLineFlags` 不符合目标格式参数的报错
 - 针对要设置的 Flag 并没有定义（注册）的报错，这类报错可以设置一个开关函数
