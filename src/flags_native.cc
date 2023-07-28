@@ -18,6 +18,7 @@
 #include <vector>
 #include <map>
 #include <string>
+#include <mutex>
 
 namespace phi {
 
@@ -35,31 +36,28 @@ enum class FlagType : uint8_t {
 class Flag {
 public:
   Flag(std::string name,
-       std::string help,
+       std::string description,
        std::string file,
        FlagType type,
-       void* current_val,
-       void* default_val)
+       void* value)
     : name_(name),
-      help_(help),
+      description_(description),
       file_(file),
       type_(type),
-      current_val_(current_val),
-      default_val_(default_val) {
+      value_(value) {
   }
   ~Flag() = default;
 
-  void SetValue(const std::string& value);
+  void SetValueFromString(const std::string& value);
 
 private:
   friend class FlagRegistry;
 
-  const std::string name_;  // flag name
-  const std::string help_;  // help message
-  const std::string file_;  // file name where the flag is defined
-  const FlagType type_;     // flag value type
-  void* current_val_;       // current flag value
-  void* default_val_;       // default flag value
+  const std::string name_;         // flag name
+  const std::string description_;  // description message
+  const std::string file_;         // file name where the flag is defined
+  const FlagType type_;            // flag value type
+  void* value_;                    // flag value ptr
 };
 
 class FlagRegistry {
@@ -73,12 +71,14 @@ public:
 
   void SetFlagValue(const std::string& name, const std::string& value);
 
-  bool Find(const std::string& name);
+  bool HasFlag(const std::string& name);
 
 private:
   FlagRegistry() = default;
 
   std::map<std::string, Flag*> flags_;
+
+  std::mutex mutex_;
 };
 
 template <typename T>
@@ -106,18 +106,16 @@ template <typename T>
 FlagRegisterer::FlagRegisterer(std::string name,
                                std::string help,
                                std::string file,
-                               T* current_value,
-                               T* default_value) {
+                               T* value) {
   FlagType type = FlagTypeTraits<T>::Type;
-  Flag* flag = new Flag(name, help, file, type, current_value, default_value);
+  Flag* flag = new Flag(name, help, file, type, value);
   FlagRegistry::Instance()->RegisterFlag(flag);
 }
 
 // Instantiate FlagRegisterer for supported types.
-#define INSTANTIATE_FLAG_REGISTERER(type)                 \
-  template FlagRegisterer::FlagRegisterer(                \
-    std::string name, std::string help, std::string file, \
-    type* current_value, type* default_value)
+#define INSTANTIATE_FLAG_REGISTERER(type)  \
+  template FlagRegisterer::FlagRegisterer( \
+    std::string name, std::string help, std::string file, type* value)
 
 INSTANTIATE_FLAG_REGISTERER(bool);
 INSTANTIATE_FLAG_REGISTERER(int32_t);
@@ -153,7 +151,7 @@ void ParseCommandLineFlags(int* pargc, char*** pargv) {
     // If argv is "--help", print all flags help message and exit
     if (argv == "--help") {
       // TODO: registry_->PrintAllFlagsHelp();
-      exit(0);
+      exit(1);
     }
 
     // Parse arg name and value
@@ -180,7 +178,7 @@ void ParseCommandLineFlags(int* pargc, char*** pargv) {
 
     // check if the flag is registered
     FlagRegistry* registry_ = FlagRegistry::Instance();
-    if (!registry_->Find(name)) {
+    if (!registry_->HasFlag(name)) {
       std::cout << "Error: undefined flag named "
                 << "\"" << name << "\". " << std::endl;
       continue;
@@ -201,26 +199,28 @@ void FlagRegistry::RegisterFlag(Flag* flag) {
   if (iter != flags_.end()) {
     LOG("ERROR: flag \"" + flag->name_ + "\" has been defined in " + iter->second->file_);
   } else {
+    std::lock_guard<std::mutex> lock(mutex_);
     flags_[flag->name_] = flag;
   }
 }
 
 void FlagRegistry::SetFlagValue(const std::string& name, const std::string& value) {
-  flags_[name]->SetValue(value);
+  std::lock_guard<std::mutex> lock(mutex_);
+  flags_[name]->SetValueFromString(value);
 }
 
-bool FlagRegistry::Find(const std::string& name) {
+bool FlagRegistry::HasFlag(const std::string& name) {
   return flags_.find(name) != flags_.end();
 }
 
-void Flag::SetValue(const std::string& value) {
+void Flag::SetValueFromString(const std::string& value) {
   switch (type_) {
   case FlagType::BOOL: {
-    bool* current_val = static_cast<bool*>(current_val_);
+    bool* val = static_cast<bool*>(value_);
     if (value == "true" || value == "True" || value == "TRUE" || value == "1") {
-      *current_val = true;
+      *val = true;
     } else if (value == "false" || value == "False" || value == "FALSE" || value == "0") {
-      *current_val = false;
+      *val = false;
     } else {
       std::cout << "ERROR: Value: \"" + value + "\" is invalid for bool flag \"" + name_
                 << "\", please use [true, True, TRUE, 1] or [false, False, FALSE, 0].";
@@ -228,33 +228,33 @@ void Flag::SetValue(const std::string& value) {
     break;
   }
   case FlagType::INT32: {
-    int32_t* current_val = static_cast<int32_t*>(current_val_);
-    *current_val = std::stoi(value);
+    int32_t* val = static_cast<int32_t*>(value_);
+    *val = std::stoi(value);
     break;
   }
   case FlagType::UINT32: {
-    uint32_t* current_val = static_cast<uint32_t*>(current_val_);
-    *current_val = std::stoul(value);
+    uint32_t* val = static_cast<uint32_t*>(value_);
+    *val = std::stoul(value);
     break;
   }
   case FlagType::INT64: {
-    int64_t* current_val = static_cast<int64_t*>(current_val_);
-    *current_val = std::stoll(value);
+    int64_t* val = static_cast<int64_t*>(value_);
+    *val = std::stoll(value);
     break;
   }
   case FlagType::UINT64: {
-    uint64_t* current_val = static_cast<uint64_t*>(current_val_);
-    *current_val = std::stoull(value);
+    uint64_t* val = static_cast<uint64_t*>(value_);
+    *val = std::stoull(value);
     break;
   }
   case FlagType::DOUBLE: {
-    double* current_val = static_cast<double*>(current_val_);
-    *current_val = std::stod(value);
+    double* val = static_cast<double*>(value_);
+    *val = std::stod(value);
     break;
   }
   case FlagType::STRING: {
-    std::string* current_val = static_cast<std::string*>(current_val_);
-    *current_val = value;
+    std::string* val = static_cast<std::string*>(value_);
+    *val = value;
     break;
   }
   default: {

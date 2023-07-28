@@ -35,7 +35,7 @@ void ParseCommandLineFlags(int* argc, char*** argv);
 using std::string;
 
 // ----------------------------DECLARE FLAGS----------------------------
-#define PHI_DECLARE_FLAG(type, name)          \
+#define PHI_DECLARE_VARIABLE(type, name)      \
   namespace phi {                             \
   namespace flag_##type {                     \
     extern PHI_IMPORT_FLAG type FLAGS_##name; \
@@ -43,50 +43,48 @@ using std::string;
   }                                           \
   using phi::flag_##type::FLAGS_##name
 
-#define PHI_DECLARE_bool(name) PHI_DECLARE_FLAG(bool, name)
-#define PHI_DECLARE_int32(name) PHI_DECLARE_FLAG(int32_t, name)
-#define PHI_DECLARE_uint32(name) PHI_DECLARE_FLAG(uint32_t, name)
-#define PHI_DECLARE_int64(name) PHI_DECLARE_FLAG(int64_t, name)
-#define PHI_DECLARE_uint64(name) PHI_DECLARE_FLAG(uint64_t, name)
-#define PHI_DECLARE_double(name) PHI_DECLARE_FLAG(double, name)
-#define PHI_DECLARE_string(name) PHI_DECLARE_FLAG(string, name)
+#define PHI_DECLARE_bool(name) PHI_DECLARE_VARIABLE(bool, name)
+#define PHI_DECLARE_int32(name) PHI_DECLARE_VARIABLE(int32_t, name)
+#define PHI_DECLARE_uint32(name) PHI_DECLARE_VARIABLE(uint32_t, name)
+#define PHI_DECLARE_int64(name) PHI_DECLARE_VARIABLE(int64_t, name)
+#define PHI_DECLARE_uint64(name) PHI_DECLARE_VARIABLE(uint64_t, name)
+#define PHI_DECLARE_double(name) PHI_DECLARE_VARIABLE(double, name)
+#define PHI_DECLARE_string(name) PHI_DECLARE_VARIABLE(string, name)
 
 namespace phi {
 class FlagRegisterer {
 public:
   template <typename T>
   FlagRegisterer(std::string name,
-                 std::string help,
+                 std::string description,
                  std::string file,
-                 T* current_value,
-                 T* default_value);
+                 T* value);
 };
 }  // namespace phi
 
 // ----------------------------DEFINE FLAGS----------------------------
-#define PHI_DEFINE_FLAG(type, name, default_value, help_string)              \
-  namespace phi {                                                            \
-  namespace flag_##type {                                                    \
-    static type FLAGS_##name##_default = default_value;                      \
-    PHI_EXPORT_FLAG type FLAGS_##name = FLAGS_##name##_default;              \
-    /* Register FLAG */                                                      \
-    static phi::FlagRegisterer Flag##name##_FlagRegisterer(                  \
-      #name, help_string, __FILE__, &FLAGS_##name, &FLAGS_##name##_default); \
-  }                                                                          \
-  }                                                                          \
+#define PHI_DEFINE_VARIABLE(type, name, value, description) \
+  namespace phi {                                           \
+  namespace flag_##type {                                   \
+    PHI_EXPORT_FLAG type FLAGS_##name = value;              \
+    /* Register FLAG */                                     \
+    static FlagRegisterer flag_##name##_registerer(         \
+      #name, description, __FILE__, &FLAGS_##name);         \
+  }                                                         \
+  }                                                         \
   using phi::flag_##type::FLAGS_##name
 
 #define PHI_DEFINE_bool(name, val, txt) \
-  PHI_DEFINE_FLAG(bool, name, val, txt)
+  PHI_DEFINE_VARIABLE(bool, name, val, txt)
 #define PHI_DEFINE_int32(name, val, txt) \
-  PHI_DEFINE_FLAG(int32_t, name, val, txt)
+  PHI_DEFINE_VARIABLE(int32_t, name, val, txt)
 #define PHI_DEFINE_uint32(name, val, txt) \
-  PHI_DEFINE_FLAG(uint32_t, name, val, txt)
+  PHI_DEFINE_VARIABLE(uint32_t, name, val, txt)
 #define PHI_DEFINE_int64(name, val, txt) \
-  PHI_DEFINE_FLAG(int64_t, name, val, txt)
+  PHI_DEFINE_VARIABLE(int64_t, name, val, txt)
 #define PHI_DEFINE_uint64(name, val, txt) \
-  PHI_DEFINE_FLAG(uint64_t, name, val, txt)
+  PHI_DEFINE_VARIABLE(uint64_t, name, val, txt)
 #define PHI_DEFINE_double(name, val, txt) \
-  PHI_DEFINE_FLAG(double, name, val, txt)
+  PHI_DEFINE_VARIABLE(double, name, val, txt)
 #define PHI_DEFINE_string(name, val, txt) \
-  PHI_DEFINE_FLAG(string, name, val, txt)
+  PHI_DEFINE_VARIABLE(string, name, val, txt)
