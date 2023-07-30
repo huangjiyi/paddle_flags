@@ -2,7 +2,7 @@
 
 | 版本 | 作者      | 时间      |
 | ---- | --------- | -------- |
-| V1.0 | huangjiyi | 2023.7.23 |
+| V1.0 | huangjiyi | 2023.7.31 |
 
 ## 一、概要
 
@@ -304,7 +304,7 @@ set(C10_USE_GFLAGS ${USE_GFLAGS})
 
   - 普通命令行标志的解析，一般格式为 `--name=value` 或 `--name value`，需要确定支持哪些格式，主要参考 gflags
   - 特殊标志：`--fromenv` 和 `--tryfromenv`，根据环境变量的值设置 Flag，Paddle 中有用到
-  - 特殊标志：`--flagfile`，从一个文件中解析 Flag，Paddle 代码中没用到，不确定外部是否会用到
+  - 考虑是否支持其他的 gflags 特殊标志，比如 `--flagfile`，从一个文件中解析 Flag，Paddle 代码中没用到，不确定外部是否会用到
   - 报错机制：对于不满足目标格式的 Flag 或者解析得到未定义的 Flag 的报错机制，Paddle 中用到的 `AllowCommandLineReparsing()` 与这个机制相关
 
 - `GetCommandLineOption` 和 `SetCommandLineOption`：在 Flag 注册表中设计对应功能的接口即可
@@ -547,15 +547,86 @@ void ParseCommandLineFlags(int* pargc, char*** pargv) {
 }
 ```
 
-- 在参数格式检查中，命令行参数的格式应该满足：`--help`, `--name=value`, `--name value`，其中双横线 `--` 可以换成单横线 `-`
+- 在参数格式检查中，命令行参数的格式应该满足：`--help`, `--name=value`, `--name value`，其中双横线 `--` 可以换成单横线 `-`，`value` 可以放在 `""` 中，放在 `""` 中的 `value` 可以包含空格，否则 `value` 不能包含空格
+
+- 这里说明一下不打算支持的 gflags 中的参数格式：
+
+  - `--name` 或 `--noname` 用于 bool flag 赋值 true 或 false
+  - 单独的 `--` 表示终止解析命令行参数
+
+- 对于特殊标志：
+
+  计划支持：
+
+  - `--help`：
+
+    在 `gflags` 中是打印所有文件中所有的 flag 信息，包括 name, default_value, description string（我们没有定义 default_value 所以不打印了）
+
+    但是Paddle 中定义了 200+ Flag，全部打印出来太多了，我认为 `--help` 在 Paddle 中的使用场景主要在测试中，所以不太需要打印所有 flag
+
+    在 gflags 中实现了一个 `--helpshort`，效果是只打印当前文件中 `DEFINE` 的 Flag，具体通过匹配 `Flag`  中的 `file_` 成员实现
+
+    综上，计划实现的 `--help` 效果是只打印当前文件中 `DEFINE` 的 Flag，然后计划将打印所有文件中所有的 flag 信息设计成一个函数接口
+
+  - `--fromen=value` 和 `--tryfromenv=value`：`value` 为用 `,` 分隔的环境变量名 `env1,env2,...`，实现的效果是将环境变量 `name` 的值赋给 `FLAGS_##name`，其中 `--tryfromenv` 对于没有定义的环境变量会忽略不会宝座，`--fromenv` 则会报错
+
+  计划不支持的 `gflags` 特殊标志：
+
+  - 其他过滤规则打印 Flag 信息的 `--helpxxx` 标志
+  - `--undefok=flagname,flagname,...`：允许列出的 Flag 没有定义而不会报错
+  - `--flagfile=filepath`：从指定文件中读取 Flag，flagfile 中每一行一个 Flag
 
 #### 报错机制
 
-在代码中还需要设计一套报错机制，计划利用 Paddle 中的报错机制，报错主要包括以下几种情况：
+在代码中还需要设计一套报错机制，计划利用 Paddle 中的报错机制实现，报错主要包括以下几种情况：
 
 - 针对 `ParseCommandLineFlags` 不符合目标格式参数的报错
 - 针对要设置的 Flag 并没有定义（注册）的报错，这类报错可以设置一个开关函数
 - 针对 `SetFlagsFromEnv` 中 `env_var_name` 在环境中不存在的报错
-- 针对 `DEFINE_<type>` 定义相同 `name` Flag 的报错
+- 针对在 Flag 注册表中注册相同 name 的 Flag 的报错
+- 针对 `value` 字符串不满足目标 type 格式的报错
 
 在其中几种批量处理的情况中，可以先收集每一项的错误信息再统一报错
+
+#### gflags 依赖可选
+
+早期实现的版本会保留目前依赖 gflags 的版本，具体参考 [Pytorch](#Pytorch) 利用编译选项和宏来控制，如果新实现的版本与旧版本接口不同，会通过再封装一层来统一新旧版本的接口。
+
+目前 Paddle 中存在 `DEFINE_<type>` 和 `PHI_DEFINE_<type>` 两种宏用于定义 Flag，这两种宏底层都是依赖 gflags，即都是注册在同一个注册表中，而上述新实现的版本只能用 `PHI_DEFINE_<type>` 注册到新实现的注册表中，因此为了为了统一新旧版本的接口， 目前 Paddle 所有的 `(DEFINE|DECLARE)_<type>` 需要替换为 `PHI_(DEFINE|DECLARE)_<type>`
+
+### 3. 主要影响的模块接口变化
+
+- 需要将所有的 `(DEFINE|DECLARE)_<type>` 替换为 `PHI_(DEFINE|DECLARE)_<type>`
+- 其余的 gflags 用法（较少）与新实现的接口不同也需要替换
+
+## 五、测试与验收的考量
+
+### 自测方案
+
+- 构建单测，验证各功能的准确性
+- 测试新旧版本的一致性
+- 测试新旧版本切换的编译选项
+
+## 六、影响面
+
+### 对用户的影响
+
+无影响
+
+### 对二次开发用户的影响
+
+新实现的接口与目前暴露的 `paddle/phi/core/flags.h` 中的接口基本一致，部分接口如 `ParseCommandLineFlags` 因为功能相较于 gflags 更少，对于会用到新版本未实现功能的用户会有影响
+
+### 对框架架构的影响
+
+无影响
+
+### 对性能的影响
+
+无影响
+
+## 七、排期规划
+
+1. 8 月 15 日前完善设计文档，期间对于已经确定的部分进行开发
+2. 8 月 31 日前基本完成开发，根据 Review 意见进行修改
+3. 9 月 15 日前完成主要 PR 合入，后续根据反馈的问题进行修复
