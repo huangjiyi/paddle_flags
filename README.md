@@ -2,7 +2,7 @@
 
 | 版本 | 作者      | 时间      |
 | ---- | --------- | -------- |
-| V1.0 | huangjiyi | 2023.7.31 |
+| V1.0 | huangjiyi | 2023.8.1 |
 
 ## 一、概要
 
@@ -77,9 +77,9 @@ Paddle 目前在 `paddle/phi/core/flags.h` 中对 gflags 中的 Flag 注册宏 `
 
 在 Paddle 中现有的 flags 用法主要是 Flag 注册和声明宏，以及一些 gflags 的接口：
 
-1. flags 机制中使用的接口是 Flag 注册和声明宏：`(PHI_)?(DEFINE|DECLARE)_<type>`，Paddle 最多的用法：
-   - `DEFINE_<type>(name,val, txt)` 用于定义目标类型的 FLAG，相当于定义一个全局变量 `FLAGS_name`，约 200+ 处用法
-   - `DECLARE_<type>(name)` 用于声明 FLAG，相当于 `extern` 用法，约 300+ 处用法
+1. 目前 Paddle 中使用最多的接口是 Flag 注册和声明宏：`(PHI_)?(DEFINE|DECLARE)_<type>`，其中有 `PHI_` 前缀的宏是 Paddle 的重写版本，底层实现与 `(DEFINE|DECLARE)_<type>` 基本一致：
+   - `(PHI_)?DEFINE_<type>(name,val, txt)` 用于定义目标类型的 FLAG，会定义一个全局变量 `FLAGS_name`，同时进行注册，约 200+ 处用法
+   - `(PHI_)?DECLARE_<type>(name)` 用于声明 FLAG 全局变量，`extern` 用法，约 300+ 处用法
 2. `gflags::ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags)`：用于解析运行时命令行输入的标志，大部分在测试文件中使用，约 20+ 处用法
 3. `gflags::(GetCommandLineOption|SetCommandLineOption|AllowCommandLineReparsing|<Type>FromEnv)`：其他一些用法较少的 gflags 接口：
    - `bool GetCommandLineOption(const char* name, std::string* OUTPUT)`：用于获取 FLAG 的值，1 处用法
@@ -216,7 +216,7 @@ set(C10_USE_GFLAGS ${USE_GFLAGS})
 
   - 然后定义了一个 `C10FlagParser_##name` 类，其构造函数会调用 `C10FlagParser::Parse`，这个函数的功能是将输入的 `content` 字符串解析成对应 type 的值，然后赋值给 `FLAGS_##name`
 
-  - 最后构造了一个 `RegistererC10FlagsRegistry` 类型的注册器对象 `g_C10FlagsRegistry_##name`，这个注册器对象的构造过程就是在注册表 `C10FlagsRegistry()` 中注册一个 `(key, creater)` 项，其中 `key` 为 `#name`，`creater` 是 ` RegistererC10FlagsRegistry::DefaultCreator<C10FlagParser_##name>` 函数，具体实现就是构造一个 `C10FlagParser_##name` 对象，相当于给 `FLAGS_##nam` 赋值
+  - 最后构造了一个 `RegistererC10FlagsRegistry` 类型的注册器对象 `g_C10FlagsRegistry_##name`，这个注册器对象的构造过程就是在注册表 `C10FlagsRegistry()` 中注册一个 `(key, creater)` 项，其中 `key` 为 `#name`，`creater` 是 ` RegistererC10FlagsRegistry::DefaultCreator<C10FlagParser_##name>` 函数，`creater` 具体就是构造一个 `C10FlagParser_##name` 对象，相当于给 `FLAGS_##nam` 赋值
 
   - `C10FlagsRegistry()`：用于获取 Flag 注册表单例，通过通用注册表 `c10::Registry` 构造得到，该注册表中每一项是一个 `(key, creater)` 对，其中 `key` 类型为 `std::string`，`creater` 类型为返回值为 `std::unique_ptr<C10FlagParser>`，输入为 `const string&` 的函数
 
@@ -268,18 +268,17 @@ set(C10_USE_GFLAGS ${USE_GFLAGS})
 
 #### 明确 Paddle 需要哪些用法及其使用场景
 
-在[Paddle 中现有的 gflags 用法](#Paddle 中现有的 gflags 用法)中，Paddle 需要的用法包括：
+在[Paddle 中现有的 gflags 用法](#paddle-中现有的-gflags-用法)中，Paddle 需要的用法包括：
 
 - `DEFINE_<type>(name, val, txt)`：定义全局标志变量 `FLAGS_name`，并且将 flag 的一些信息进行注册
 
 - `DECLARE_<type>(name)`：声明全局标志变量 `FLAGS_name`，用于需要访问 `FLAGS_name` 的场景
 
-- `ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags)`：命令行标志解析，`*argc` 表示标志数量，`*argv` 表示标志字符串（如--name=value）数组。
-
+- `ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags)`：命令行标志解析，`*argc` 表示标志数量，`*argv` 表示标志字符串（如 `--name=value`）数组。
   - 在 Paddle 中，大部分 `ParseCommandLineFlags` 在测试文件中使用，用于在命令行运行测试程序时设置一些可选参数；
-
-  - 还有一些地方在命令行输入 argv 的基础上，手动添加一些 flag，比如添加 --tryfromenv 设置环境变量 flag，再调用 `ParseCommandLineFlags` 进行解析。
-
+  
+  - 还有一些地方在命令行输入 argv 的基础上，手动添加一些 flag，比如添加 `--tryfromenv` 设置环境变量 flag，再调用 `ParseCommandLineFlags` 进行解析。
+  
 - `bool GetCommandLineOption(const char* name, std::string* OUTPUT)`：查找一个 flag，如果存在则将 `FLAG_##name` 存放在 `OUTPUT`，在 Paddle 中只用到了查找功能来判断一个 flag 是否被定义
 
 - `std::string SetCommandLineOption(const char* name, const char* value)`：用于将 `FLAG_##name` 的值设置为 `value`
