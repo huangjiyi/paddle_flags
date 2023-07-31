@@ -2,7 +2,7 @@
 
 | 版本 | 作者      | 时间      |
 | ---- | --------- | -------- |
-| V1.0 | huangjiyi | 2023.8.1 |
+| V1.0 | huangjiyi | 2023.7.31 |
 
 ## 一、概要
 
@@ -310,7 +310,7 @@ set(C10_USE_GFLAGS ${USE_GFLAGS})
 
 ### 2. 实现方案
 
-![image-20230728165249954](./.assert/image-20230728165249954.png)
+![image-20230731141805774](./.assert/image-20230731141805774.png)
 
 下面从底层数据结构开始介绍
 
@@ -440,13 +440,13 @@ FlagRegisterer::FlagRegisterer(std::string name,
 - `FlagRegisterer` 作为注册器，利用模板函数和结构体统一实现不同 type 的 flag 注册过程，在构造一个 `FlagRegisterer` 对象时，会根据构造输入在 Flag 注册表中进行注册。
 - 其中设计了一个 `FlagTypeTraits` 利用模板实现内置数据类型到枚举类型 `FlagType` (`Flag` 数据结构中保存的类型) 的映射
 
-#### `PHI_DEFINE_<type>`: Flag 定义宏
+#### `PD_DEFINE_<type>`: Flag 定义宏
 
 ``` C++
-#define PHI_DEFINE_VARIABLE(type, name, value, description) \
+#define PD_DEFINE_VARIABLE(type, name, value, description) \
   namespace phi {                                           \
   namespace flag_##type {                                   \
-    PHI_EXPORT_FLAG type FLAGS_##name = value;              \
+    PD_EXPORT_FLAG type FLAGS_##name = value;              \
     /* Register FLAG */                                     \
     static FlagRegisterer flag_##name##_registerer(         \
       #name, description, __FILE__, &FLAGS_##name);         \
@@ -454,46 +454,46 @@ FlagRegisterer::FlagRegisterer(std::string name,
   }                                                         \
   using phi::flag_##type::FLAGS_##name
 
-#define PHI_DEFINE_bool(name, val, txt) \
-  PHI_DEFINE_VARIABLE(bool, name, val, txt)
-#define PHI_DEFINE_int32(name, val, txt) \
-  PHI_DEFINE_VARIABLE(int32_t, name, val, txt)
-#define PHI_DEFINE_uint32(name, val, txt) \
-  PHI_DEFINE_VARIABLE(uint32_t, name, val, txt)
-#define PHI_DEFINE_int64(name, val, txt) \
-  PHI_DEFINE_VARIABLE(int64_t, name, val, txt)
-#define PHI_DEFINE_uint64(name, val, txt) \
-  PHI_DEFINE_VARIABLE(uint64_t, name, val, txt)
-#define PHI_DEFINE_double(name, val, txt) \
-  PHI_DEFINE_VARIABLE(double, name, val, txt)
-#define PHI_DEFINE_string(name, val, txt) \
-  PHI_DEFINE_VARIABLE(string, name, val, txt)
+#define PD_DEFINE_bool(name, val, txt) \
+  PD_DEFINE_VARIABLE(bool, name, val, txt)
+#define PD_DEFINE_int32(name, val, txt) \
+  PD_DEFINE_VARIABLE(int32_t, name, val, txt)
+#define PD_DEFINE_uint32(name, val, txt) \
+  PD_DEFINE_VARIABLE(uint32_t, name, val, txt)
+#define PD_DEFINE_int64(name, val, txt) \
+  PD_DEFINE_VARIABLE(int64_t, name, val, txt)
+#define PD_DEFINE_uint64(name, val, txt) \
+  PD_DEFINE_VARIABLE(uint64_t, name, val, txt)
+#define PD_DEFINE_double(name, val, txt) \
+  PD_DEFINE_VARIABLE(double, name, val, txt)
+#define PD_DEFINE_string(name, val, txt) \
+  PD_DEFINE_VARIABLE(string, name, val, txt)
 ```
 
-- `PHI_DEFINE_VARIABLE`：统一实现不同 type 的 Flag 定义和注册过程
+- `PD_DEFINE_VARIABLE`：统一实现不同 type 的 Flag 定义和注册过程
 - 全局变量 `FLAGS_##name` 放在了特殊的 `phi::flag##type` 命名空间中，然后通过 using 用法暴露出来
 
-#### `PHI_DECLARE_<type>`: Flag 声明宏
+#### `PD_DECLARE_<type>`: Flag 声明宏
 
 ``` C++
-#define PHI_DECLARE_VARIABLE(type, name)      \
+#define PD_DECLARE_VARIABLE(type, name)      \
   namespace phi {                             \
   namespace flag_##type {                     \
-    extern PHI_IMPORT_FLAG type FLAGS_##name; \
+    extern PD_IMPORT_FLAG type FLAGS_##name; \
   }                                           \
   }                                           \
   using phi::flag_##type::FLAGS_##name
 
-#define PHI_DECLARE_bool(name) PHI_DECLARE_VARIABLE(bool, name)
-#define PHI_DECLARE_int32(name) PHI_DECLARE_VARIABLE(int32_t, name)
-#define PHI_DECLARE_uint32(name) PHI_DECLARE_VARIABLE(uint32_t, name)
-#define PHI_DECLARE_int64(name) PHI_DECLARE_VARIABLE(int64_t, name)
-#define PHI_DECLARE_uint64(name) PHI_DECLARE_VARIABLE(uint64_t, name)
-#define PHI_DECLARE_double(name) PHI_DECLARE_VARIABLE(double, name)
-#define PHI_DECLARE_string(name) PHI_DECLARE_VARIABLE(string, name)
+#define PD_DECLARE_bool(name) PD_DECLARE_VARIABLE(bool, name)
+#define PD_DECLARE_int32(name) PD_DECLARE_VARIABLE(int32_t, name)
+#define PD_DECLARE_uint32(name) PD_DECLARE_VARIABLE(uint32_t, name)
+#define PD_DECLARE_int64(name) PD_DECLARE_VARIABLE(int64_t, name)
+#define PD_DECLARE_uint64(name) PD_DECLARE_VARIABLE(uint64_t, name)
+#define PD_DECLARE_double(name) PD_DECLARE_VARIABLE(double, name)
+#define PD_DECLARE_string(name) PD_DECLARE_VARIABLE(string, name)
 ```
 
-- `PHI_DECLARE_VARIABLE`：统一实现不同 type Flag 的声明，具体实现就是简单的 `extern` 用法
+- `PD_DECLARE_VARIABLE`：统一实现不同 type Flag 的声明，具体实现就是简单的 `extern` 用法
 
 #### `ParseCommandLineFlags`
 
@@ -591,11 +591,11 @@ void ParseCommandLineFlags(int* pargc, char*** pargv) {
 
 早期实现的版本会保留目前依赖 gflags 的版本，具体参考 [Pytorch](#Pytorch) 利用编译选项和宏来控制，如果新实现的版本与旧版本接口不同，会通过再封装一层来统一新旧版本的接口。
 
-目前 Paddle 中存在 `DEFINE_<type>` 和 `PHI_DEFINE_<type>` 两种宏用于定义 Flag，这两种宏底层都是依赖 gflags，即都是注册在同一个注册表中，而上述新实现的版本只能用 `PHI_DEFINE_<type>` 注册到新实现的注册表中，因此为了为了统一新旧版本的接口， 目前 Paddle 所有的 `(DEFINE|DECLARE)_<type>` 需要替换为 `PHI_(DEFINE|DECLARE)_<type>`
+由于新实现的 Flag 注册定义宏为 `PD_(DEFINE|DECLARE)_<type>`，为了实现能够切换新旧版本，旧版本的 `(PHI_)?(DEFINE|DECLARE)_<type>` 需要全部替换为 `PD_(DEFINE|DECLARE)_<type>`，包括接口的定义和用法
 
 ### 3. 主要影响的模块接口变化
 
-- 需要将所有的 `(DEFINE|DECLARE)_<type>` 替换为 `PHI_(DEFINE|DECLARE)_<type>`
+- 需要将所有的 `(PHI_)?(DEFINE|DECLARE)_<type>` 替换为 `PD_(DEFINE|DECLARE)_<type>`
 - 其余的 gflags 用法（较少）与新实现的接口不同也需要替换
 
 ## 五、测试与验收的考量
