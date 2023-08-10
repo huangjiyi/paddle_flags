@@ -12,14 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "flags_native.h"
+#include "flags.h"
 
-PHI_DECLARE_string(name);
-
-int main(int argc, char* argv[]) {
-  LOG("main function start...");
-  phi::ParseCommandLineFlags(&argc, &argv);
-  LOG_VAR(FLAGS_name);
-
-  return 0;
-}
+PD_DEFINE_string(name, "Alice", "test help string...");

@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "flags_native.h"
+#include "flags.h"
 
 #include <assert.h>
 #include <vector>
 #include <map>
+#include <set>
 #include <string>
 #include <mutex>
+#include <fstream>
 
 namespace phi {
 
@@ -39,25 +41,31 @@ public:
        std::string description,
        std::string file,
        FlagType type,
+       const void* default_value,
        void* value)
     : name_(name),
       description_(description),
       file_(file),
       type_(type),
+      default_value_(default_value),
       value_(value) {
   }
   ~Flag() = default;
+
+  // Summary: --name_: type_, description_ (default: default_value_)
+  std::string Summary() const;
 
   void SetValueFromString(const std::string& value);
 
 private:
   friend class FlagRegistry;
 
-  const std::string name_;         // flag name
-  const std::string description_;  // description message
-  const std::string file_;         // file name where the flag is defined
-  const FlagType type_;            // flag value type
-  void* value_;                    // flag value ptr
+  const std::string name_;
+  const std::string description_;
+  const std::string file_;
+  const FlagType type_;
+  const void* default_value_;
+  void* value_;
 };
 
 class FlagRegistry {
@@ -71,12 +79,22 @@ public:
 
   void SetFlagValue(const std::string& name, const std::string& value);
 
-  bool HasFlag(const std::string& name);
+  bool HasFlag(const std::string& name) const;
+
+  void PrintAllFlags(std::ostream& os) const;
 
 private:
   FlagRegistry() = default;
 
   std::map<std::string, Flag*> flags_;
+
+  struct FlagCompare {
+    bool operator()(const Flag* flag1, const Flag* flag2) const {
+      return flag1->name_ < flag2->name_;
+    }
+  };
+
+  std::map<std::string, std::set<Flag*, FlagCompare>> flags_by_file_;
 
   std::mutex mutex_;
 };
@@ -106,16 +124,17 @@ template <typename T>
 FlagRegisterer::FlagRegisterer(std::string name,
                                std::string help,
                                std::string file,
+                               const T* default_value,
                                T* value) {
   FlagType type = FlagTypeTraits<T>::Type;
-  Flag* flag = new Flag(name, help, file, type, value);
+  Flag* flag = new Flag(name, help, file, type, default_value, value);
   FlagRegistry::Instance()->RegisterFlag(flag);
 }
 
 // Instantiate FlagRegisterer for supported types.
 #define INSTANTIATE_FLAG_REGISTERER(type)  \
   template FlagRegisterer::FlagRegisterer( \
-    std::string name, std::string help, std::string file, type* value)
+    std::string name, std::string help, std::string file, const type* default_value, type* value)
 
 INSTANTIATE_FLAG_REGISTERER(bool);
 INSTANTIATE_FLAG_REGISTERER(int32_t);
@@ -126,68 +145,6 @@ INSTANTIATE_FLAG_REGISTERER(double);
 INSTANTIATE_FLAG_REGISTERER(std::string);
 
 #undef INSTANTIATE_FLAG_REGISTERER
-
-void ParseCommandLineFlags(int* pargc, char*** pargv) {
-  std::cout << "Start parse commandline flags." << std::endl;
-  // Pre-process arguments
-  assert(*pargc > 0);
-  size_t argv_num = *pargc - 1;
-  std::vector<std::string> argvs(*pargv + 1, *pargv + *pargc);
-
-  // Parse arguments
-  for (int i = 0; i < argv_num; i++) {
-    const std::string& argv = argvs[i];
-    std::cout << std::endl;
-    LOG_VAR(argv);
-
-    // Ignore the argvs that not start with "--"
-    if (argv.size() < 2 || argv[0] != '-' || argv[1] != '-') {
-      std::cout << "ERROR: Invalid commandline argument: \"" << argv << "\""
-                << ", it should match the format: "
-                << "\"--help\", \"--name=value\" or \"--name value\"."
-                << std::endl;
-      continue;
-    }
-    // If argv is "--help", print all flags help message and exit
-    if (argv == "--help") {
-      // TODO: registry_->PrintAllFlagsHelp();
-      exit(1);
-    }
-
-    // Parse arg name and value
-    string name, value;
-    size_t split_pos = argv.find('=');
-    if (split_pos == string::npos) {
-      // The argv format is "--name value", get the value from next argv.
-      name = argv.substr(2);
-      ++i;
-      if (i == argv_num || (argvs[i][0] == '-' and argvs[i][1] == '-')) {
-        std::cout << "ERROR: expected flag value of commandline argument "
-                  << "\"" << argv << "\" but found none." << std::endl;
-        continue;
-      } else {
-        value = argvs[i];
-      }
-    } else {
-      // The argv format is "--name=value"
-      name = argv.substr(2, split_pos - 2);
-      value = argv.substr(split_pos + 1);
-    }
-    LOG_VAR(name);
-    LOG_VAR(value);
-
-    // check if the flag is registered
-    FlagRegistry* registry_ = FlagRegistry::Instance();
-    if (!registry_->HasFlag(name)) {
-      std::cout << "Error: undefined flag named "
-                << "\"" << name << "\". " << std::endl;
-      continue;
-    } else {
-      // set the flag value
-      registry_->SetFlagValue(name, value);
-    }
-  }
-}
 
 void FlagRegistry::RegisterFlag(Flag* flag) {
   LOG("INFO: register flag \"" + flag->name_ + "\" which defined in file: " + flag->file_);
@@ -201,6 +158,7 @@ void FlagRegistry::RegisterFlag(Flag* flag) {
   } else {
     std::lock_guard<std::mutex> lock(mutex_);
     flags_[flag->name_] = flag;
+    flags_by_file_[flag->file_].insert(flag);
   }
 }
 
@@ -209,8 +167,71 @@ void FlagRegistry::SetFlagValue(const std::string& name, const std::string& valu
   flags_[name]->SetValueFromString(value);
 }
 
-bool FlagRegistry::HasFlag(const std::string& name) {
+bool FlagRegistry::HasFlag(const std::string& name) const {
   return flags_.find(name) != flags_.end();
+}
+
+void FlagRegistry::PrintAllFlags(std::ostream& os) const {
+  for (const auto& iter : flags_by_file_) {
+    os << std::endl
+       << "Flags defined in " << iter.first << ":" << std::endl;
+    for (const auto& flag : iter.second) {
+      os << "  " << flag->Summary() << std::endl;
+    }
+  }
+  os << std::endl;
+}
+
+std::string Flag::Summary() const {
+  std::string type_string, value_string;
+  switch (type_) {
+  case FlagType::BOOL: {
+    type_string = "bool";
+    const bool* val = static_cast<const bool*>(default_value_);
+    value_string = *val ? "true" : "false";
+    break;
+  }
+  case FlagType::INT32: {
+    type_string = "int32";
+    const int32_t* val = static_cast<const int32_t*>(default_value_);
+    value_string = std::to_string(*val);
+    break;
+  }
+  case FlagType::UINT32: {
+    type_string = "uint32";
+    const uint32_t* val = static_cast<const uint32_t*>(default_value_);
+    value_string = std::to_string(*val);
+    break;
+  }
+  case FlagType::INT64: {
+    type_string = "int64";
+    const int64_t* val = static_cast<const int64_t*>(default_value_);
+    value_string = std::to_string(*val);
+    break;
+  }
+  case FlagType::UINT64: {
+    type_string = "uint64";
+    const uint64_t* val = static_cast<const uint64_t*>(default_value_);
+    value_string = std::to_string(*val);
+    break;
+  }
+  case FlagType::DOUBLE: {
+    type_string = "double";
+    const double* val = static_cast<const double*>(default_value_);
+    value_string = std::to_string(*val);
+    break;
+  }
+  case FlagType::STRING: {
+    type_string = "string";
+    const std::string* val = static_cast<const std::string*>(default_value_);
+    value_string = *val;
+    break;
+  }
+  default:
+    assert(false);
+  }
+  std::string summary = "--" + name_ + ": " + type_string + ", " + description_ + " (default: " + value_string + ")";
+  return summary;
 }
 
 void Flag::SetValueFromString(const std::string& value) {
@@ -261,6 +282,84 @@ void Flag::SetValueFromString(const std::string& value) {
     std::cout << "ERROR: flag \"" + name_ + "\" has undefined type.";
     break;
   }
+  }
+}
+
+void PrintAllFlags(bool to_file, const std::string& file_path) {
+  if (to_file) {
+    std::ofstream fout(file_path);
+    FlagRegistry::Instance()->PrintAllFlags(fout);
+  } else {
+    FlagRegistry::Instance()->PrintAllFlags(std::cout);
+  }
+}
+
+static std::string program_usage = "";
+
+void SetUsageMessage(const std::string& usage) {
+  program_usage = usage;
+}
+
+void ParseCommandLineFlags(int* pargc, char*** pargv) {
+  std::cout << "Start parse commandline flags." << std::endl;
+  // Pre-process arguments
+  assert(*pargc > 0);
+  size_t argv_num = *pargc - 1;
+  std::vector<std::string> argvs(*pargv + 1, *pargv + *pargc);
+
+  // Parse arguments
+  for (int i = 0; i < argv_num; i++) {
+    const std::string& argv = argvs[i];
+    std::cout << std::endl;
+    LOG_VAR(argv);
+
+    // Ignore the argvs that not start with "--"
+    if (argv.size() < 2 || argv[0] != '-' || argv[1] != '-') {
+      std::cout << "ERROR: Invalid commandline argument: \"" << argv << "\""
+                << ", it should match the format: "
+                << "\"--help\", \"--name=value\" or \"--name value\"."
+                << std::endl;
+      continue;
+    }
+    // If argv is "--help", print all flags help message and exit
+    if (argv == "--help") {
+      std::cout << "Usage: " << program_usage << std::endl;
+      FlagRegistry::Instance()->PrintAllFlags(std::cout);
+      exit(1);
+    }
+
+    // Parse arg name and value
+    string name, value;
+    size_t split_pos = argv.find('=');
+    if (split_pos == string::npos) {
+      // The argv format is "--name value", get the value from next argv.
+      name = argv.substr(2);
+      ++i;
+      if (i == argv_num || (argvs[i][0] == '-' and argvs[i][1] == '-')) {
+        std::cout << "ERROR: expected flag value of commandline argument "
+                  << "\"" << argv << "\" but found none." << std::endl;
+        continue;
+      } else {
+        value = argvs[i];
+      }
+    } else {
+      // The argv format is "--name=value"
+      name = argv.substr(2, split_pos - 2);
+      value = argv.substr(split_pos + 1);
+    }
+    LOG_VAR(name);
+    LOG_VAR(value);
+
+    // check if the flag is registered
+    FlagRegistry* registry_ = FlagRegistry::Instance();
+    if (!registry_->HasFlag(name)) {
+      std::cout << "Error: undefined flag named "
+                << "\"" << name << "\". " << std::endl;
+      continue;
+    } else {
+      // set the flag value
+      registry_->SetFlagValue(name, value);
+    }
   }
 }
 

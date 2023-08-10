@@ -12,6 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "flags_native.h"
+#include "flags.h"
 
-PHI_DEFINE_string(name, "Alice", "test help string...");
+PD_DECLARE_string(name);
+PD_DEFINE_int32(count, 10, "test int type flag...");
+
+int main(int argc, char* argv[]) {
+  LOG(argv[0]);
+  LOG("main function start...");
+  phi::SetUsageMessage("test ...");
+  phi::ParseCommandLineFlags(&argc, &argv);
+  LOG_VAR(FLAGS_name);
+
+  string a = "asd";
+  try {
+    int a_int = std::stoi(a);
+  } catch (std::exception& e) {
+    LOG(e.what());
+  }
+
+  constexpr char asda[] = "asdf";
+
+  phi::PrintAllFlags();
+
+  return 0;
+}

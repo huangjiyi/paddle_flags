@@ -5,8 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 include_directories(src)
 set(SOURCES 
-    test/flags_native_test_2.cc 
-    test/flags_native_test.cc 
-    src/flags_native.cc)
+    test/flags_test_2.cc 
+    test/flags_test.cc 
+    src/flags.cc)
 
 add_executable(test ${SOURCES})
