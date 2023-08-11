@@ -14,26 +14,20 @@
 
 #include "flags.h"
 
+PD_DEFINE_int32(env_int32, 0, "test flag from env ..");
+
 PD_DECLARE_string(name);
 PD_DEFINE_int32(count, 10, "test int type flag...");
 
+
 int main(int argc, char* argv[]) {
-  LOG(argv[0]);
-  LOG("main function start...");
   phi::SetUsageMessage("test ...");
   phi::ParseCommandLineFlags(&argc, &argv);
-  LOG_VAR(FLAGS_name);
 
-  string a = "asd";
-  try {
-    int a_int = std::stoi(a);
-  } catch (std::exception& e) {
-    LOG(e.what());
-  }
-
-  constexpr char asda[] = "asdf";
-
-  phi::PrintAllFlags();
+  // phi::PrintAllFlagHelp();
+  phi::SetFlagsFromEnv({"env_int32", "env_int64"});
+  
+  phi::PrintAllFlagValue();
 
   return 0;
 }

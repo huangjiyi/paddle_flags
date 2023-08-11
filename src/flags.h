@@ -15,6 +15,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include <iostream>
 #define LOG(t) std::cout << t << std::endl
@@ -29,9 +30,11 @@
 #endif  // _WIN32
 
 namespace phi {
-void PrintAllFlags(bool to_file=false, const std::string& file_name="./all_flags.txt");
+void PrintAllFlagValue();
+void PrintAllFlagHelp(bool to_file=false, const std::string& file_name="./all_flags.txt");
 void SetUsageMessage(const std::string& usage);
 void ParseCommandLineFlags(int* argc, char*** argv);
+void SetFlagsFromEnv(const std::vector<std::string>& envs);
 }  // namespace phi
 
 using std::string;
