@@ -14,19 +14,25 @@
 
 #include "flags.h"
 
-PD_DEFINE_int32(env_int32, 0, "test flag from env ..");
+PD_DEFINE_bool(bool_flag, false, "test bool type flag...");
+PD_DEFINE_int32(count, 10, "test int type flag...");
+PD_DEFINE_uint32(uint32_flag, 10, "test uint32 type flag...");
+PD_DEFINE_int64(int64_flag, 10, "test int64 type flag...");
+PD_DEFINE_uint64(uint64_flag, 10, "test uint64 type flag...");
+PD_DEFINE_double(double_flag, 10.0, "test double type flag...");
 
 PD_DECLARE_string(name);
-PD_DEFINE_int32(count, 10, "test int type flag...");
+
+PD_DEFINE_int32(env_int32, 0, "test flag from env ..");
 
 using namespace paddle::flags;
 
 int main(int argc, char* argv[]) {
-  SetUsageMessage("test ...");
   ParseCommandLineFlags(&argc, &argv);
 
-  // phi::PrintAllFlagHelp();
-  SetFlagsFromEnv({"env_int32", "env_int64"}, false);
+  // SetFlagsFromEnv({"env_int32", "int32_flag", "asd"}, false);
+  
+  // PrintAllFlagHelp();
   
   PrintAllFlagValue();
 

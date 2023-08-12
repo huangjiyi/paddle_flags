@@ -35,7 +35,7 @@ std::stringstream& ErrorStream() {
   ErrorStream() << "paddle flags error: " << message << " (at " \
                 << __FILE__ << ":" << __LINE__ << ")" << std::endl
 
-void exit_with_errors() {
+inline void exit_with_errors() {
   std::cerr << ErrorStream().str();
   exit(-1);
 }
@@ -218,6 +218,7 @@ std::string Value2String(const void* value, FlagType type) {
   default:
     LOG_FLAG_ERROR("flag type is undefined.");
     exit_with_errors();
+    return "";
   }
 }
 
@@ -344,13 +345,6 @@ void PrintAllFlagValue() {
   FlagRegistry::Instance()->PrintAllFlagValues(std::cout);
 }
 
-static std::string program_usage = "";
-static bool command_line_parsed = false;
-
-void SetUsageMessage(const std::string& usage) {
-  program_usage = usage;
-}
-
 bool GetValueFromEnv(const std::string& name, std::string& value) {
   const char* env_var = std::getenv(name.c_str());
   if (env_var == nullptr) {
@@ -361,6 +355,7 @@ bool GetValueFromEnv(const std::string& name, std::string& value) {
 }
 
 void SetFlagsFromEnv(const std::vector<std::string>& envs, bool error_fatal) {
+  bool success = true;
   for (const std::string& env_var_name : envs) {
     std::string env_var_value;
     if (GetValueFromEnv(env_var_name, env_var_value)) {
@@ -368,23 +363,32 @@ void SetFlagsFromEnv(const std::vector<std::string>& envs, bool error_fatal) {
         FlagRegistry::Instance()->SetFlagValue(env_var_name, env_var_value);
       } else if (error_fatal) {
         LOG_FLAG_ERROR("flag \"" + env_var_name + "\" is not defined.");
+        success = false;
       }
     } else if (error_fatal) {
       LOG_FLAG_ERROR("environment variable \"" + env_var_name + "\" is not set.");
+      success = false;
     }
+  }
+  if (error_fatal && !success) {
+    exit_with_errors();
   }
 }
 
+static bool command_line_parsed = false;
+
 void ParseCommandLineFlags(int* pargc, char*** pargv) {
+  if (command_line_parsed) {
+    LOG_FLAG_ERROR("ParseCommandLineFlags should only be called once.");
+    exit_with_errors();
+  }
   command_line_parsed = true;
 
   assert(*pargc > 0);
   size_t argv_num = *pargc - 1;
   std::vector<std::string> argvs(*pargv + 1, *pargv + *pargc);
 
-  // Parse arguments
   std::string arg_format_help = "please follow the formats: \"--help\", \"--name=value\" or \"--name value\".";
-
   for (int i = 0; i < argv_num; i++) {
     const std::string& argv = argvs[i];
 
@@ -393,37 +397,33 @@ void ParseCommandLineFlags(int* pargc, char*** pargv) {
       exit_with_errors();
     }
 
-    // Parse arg name and value
+    // parse arg name and value
     size_t hyphen_num = argv[1] == '-' ? 2 : 1;
     std::string name, value;
     size_t split_pos = argv.find('=');
     if (split_pos == std::string::npos) {
+      // the argv format is "--name" or "--name value"
       name = argv.substr(hyphen_num);
       if (name.empty()) {
         LOG_FLAG_ERROR("invalid commandline argument: \"" + argv + "\", " + arg_format_help);
         exit_with_errors();
       }
 
-      // Print help message
+      // print help message
       if (name == "help" || name == "h") {
-        if (program_usage.empty()) {
-          std::cout << "Usage: " << program_usage << std::endl;
-        } else {
-          std::cout << "Usage not set." << std::endl;
-        }
         FlagRegistry::Instance()->PrintAllFlagHelp(std::cout);
         exit(1);
       }
 
-      // The argv format is "--name value", get the value from next argv.
+      // get the value from next argv.
       if (++i == argv_num) {
-        LOG_FLAG_ERROR("expected value of commandline argument \"" + argv + "\" but found none.");
+        LOG_FLAG_ERROR("expected value of flag \"" + name + "\" but found none.");
         exit_with_errors();
       } else {
         value = argvs[i];
       }
     } else {
-      // The argv format is "--name=value"
+      // the argv format is "--name=value"
       if (split_pos == hyphen_num or split_pos == argv.size() - 1) {
         LOG_FLAG_ERROR("invalid commandline argument: \"" + argv + "\", " + arg_format_help);
         exit_with_errors();

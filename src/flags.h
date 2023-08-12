@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// This is a simple commandline flags tool for paddle, which is inspired by
+// gflags but only implements the following necessary features:
+// 1. Define or declare a flag.
+// 2. Parse commandline flags.
+// 3. Other utility functions.
+
 #pragma once
 
 #include <string>
@@ -27,11 +33,39 @@
 
 namespace paddle {
 namespace flags {
-void PrintAllFlagValue();
-void PrintAllFlagHelp(bool to_file = false, const std::string& file_name = "all_flags.txt");
-void SetUsageMessage(const std::string& usage);
+/**
+ * @brief Parse commandline flags.
+ *
+ * It recieves commandline arguments passed in argc and argv from main function,
+ * argv[0] is the program name, and argv[1:] are the commandline arguments
+ * which matching the format "--name=value" or "--name value". After parsing,
+ * the corresponding flag value will be reset.
+ */
 void ParseCommandLineFlags(int* argc, char*** argv);
+
+/**
+ * @brief Set flags from environment variables.
+ *
+ * It recieves a list of environment variable names, and set the environment
+ * variable values to the corresponding flags with the same name. If error_fatal
+ * is true, it will exit the program when the environment variable is not set 
+ * or the flag is not defined, that is the same effect as using commandline 
+ * argument "--fromenv=var_name1,var_name2,...". Otherwise, the errors above 
+ * will be ignored, that is the same effect as using commandline argument 
+ * "--tryfromenv=var_name1,var_name2,...".
+ */
 void SetFlagsFromEnv(const std::vector<std::string>& envs, bool error_fatal);
+
+/**
+ * @brief Print all registered flags' help message. If to_file is true, 
+ * write help message to file.
+ */
+void PrintAllFlagHelp(bool to_file = false, const std::string& file_name = "all_flags.txt");
+
+/**
+ * @brief Print all registered flags' current and default value.
+ */
+void PrintAllFlagValue();
 }
 }  // namespace paddle::flags
 
