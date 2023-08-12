@@ -17,10 +17,6 @@
 #include <string>
 #include <vector>
 
-#include <iostream>
-#define LOG(t) std::cout << t << std::endl
-#define LOG_VAR(var) std::cout << #var << ": " << var << std::endl
-
 #if defined(_WIN32)
 #define PD_EXPORT_FLAG __declspec(dllexport)
 #define PD_IMPORT_FLAG __declspec(dllimport)
@@ -29,24 +25,24 @@
 #define PD_IMPORT_FLAG
 #endif  // _WIN32
 
-namespace phi {
+namespace paddle {
+namespace flags {
 void PrintAllFlagValue();
-void PrintAllFlagHelp(bool to_file=false, const std::string& file_name="./all_flags.txt");
+void PrintAllFlagHelp(bool to_file = false, const std::string& file_name = "all_flags.txt");
 void SetUsageMessage(const std::string& usage);
 void ParseCommandLineFlags(int* argc, char*** argv);
-void SetFlagsFromEnv(const std::vector<std::string>& envs);
-}  // namespace phi
-
-using std::string;
+void SetFlagsFromEnv(const std::vector<std::string>& envs, bool error_fatal);
+}
+}  // namespace paddle::flags
 
 // ----------------------------DECLARE FLAGS----------------------------
-#define PD_DECLARE_VARIABLE(type, name)      \
-  namespace phi {                            \
-  namespace flag_##type {                    \
-    extern PD_IMPORT_FLAG type FLAGS_##name; \
-  }                                          \
-  }                                          \
-  using phi::flag_##type::FLAGS_##name
+#define PD_DECLARE_VARIABLE(type, name)    \
+  namespace paddle {                       \
+  namespace flags {                        \
+  extern PD_IMPORT_FLAG type FLAGS_##name; \
+  }                                        \
+  }                                        \
+  using paddle::flags::FLAGS_##name
 
 #define PD_DECLARE_bool(name) PD_DECLARE_VARIABLE(bool, name)
 #define PD_DECLARE_int32(name) PD_DECLARE_VARIABLE(int32_t, name)
@@ -54,9 +50,10 @@ using std::string;
 #define PD_DECLARE_int64(name) PD_DECLARE_VARIABLE(int64_t, name)
 #define PD_DECLARE_uint64(name) PD_DECLARE_VARIABLE(uint64_t, name)
 #define PD_DECLARE_double(name) PD_DECLARE_VARIABLE(double, name)
-#define PD_DECLARE_string(name) PD_DECLARE_VARIABLE(string, name)
+#define PD_DECLARE_string(name) PD_DECLARE_VARIABLE(std::string, name)
 
-namespace phi {
+namespace paddle {
+namespace flags {
 class FlagRegisterer {
 public:
   template <typename T>
@@ -66,20 +63,21 @@ public:
                  const T* default_value,
                  T* value);
 };
-}  // namespace phi
+}
+}  // namespace paddle::flags
 
 // ----------------------------DEFINE FLAGS----------------------------
-#define PD_DEFINE_VARIABLE(type, name, default_value, description)           \
-  namespace phi {                                                            \
-  namespace flag_##type {                                                    \
-    static const type FLAGS_##name##_default = default_value;                \
-    PD_EXPORT_FLAG type FLAGS_##name = default_value;                        \
-    /* Register FLAG */                                                      \
-    static FlagRegisterer flag_##name##_registerer(                          \
-      #name, description, __FILE__, &FLAGS_##name##_default, &FLAGS_##name); \
-  }                                                                          \
-  }                                                                          \
-  using phi::flag_##type::FLAGS_##name
+#define PD_DEFINE_VARIABLE(type, name, default_value, description)         \
+  namespace paddle {                                                       \
+  namespace flags {                                                        \
+  static const type FLAGS_##name##_default = default_value;                \
+  PD_EXPORT_FLAG type FLAGS_##name = default_value;                        \
+  /* Register FLAG */                                                      \
+  static FlagRegisterer flag_##name##_registerer(                          \
+    #name, description, __FILE__, &FLAGS_##name##_default, &FLAGS_##name); \
+  }                                                                        \
+  }                                                                        \
+  using paddle::flags::FLAGS_##name
 
 #define PD_DEFINE_bool(name, val, txt) \
   PD_DEFINE_VARIABLE(bool, name, val, txt)
@@ -94,4 +92,4 @@ public:
 #define PD_DEFINE_double(name, val, txt) \
   PD_DEFINE_VARIABLE(double, name, val, txt)
 #define PD_DEFINE_string(name, val, txt) \
-  PD_DEFINE_VARIABLE(string, name, val, txt)
+  PD_DEFINE_VARIABLE(std::string, name, val, txt)

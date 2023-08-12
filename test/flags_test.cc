@@ -19,15 +19,16 @@ PD_DEFINE_int32(env_int32, 0, "test flag from env ..");
 PD_DECLARE_string(name);
 PD_DEFINE_int32(count, 10, "test int type flag...");
 
+using namespace paddle::flags;
 
 int main(int argc, char* argv[]) {
-  phi::SetUsageMessage("test ...");
-  phi::ParseCommandLineFlags(&argc, &argv);
+  SetUsageMessage("test ...");
+  ParseCommandLineFlags(&argc, &argv);
 
   // phi::PrintAllFlagHelp();
-  phi::SetFlagsFromEnv({"env_int32", "env_int64"});
+  SetFlagsFromEnv({"env_int32", "env_int64"}, false);
   
-  phi::PrintAllFlagValue();
+  PrintAllFlagValue();
 
   return 0;
 }

@@ -14,23 +14,31 @@
 
 #include "flags.h"
 
-#include <assert.h>
-#include <vector>
+#include <iostream>
+#include <fstream>
+#include <sstream>
 #include <map>
 #include <set>
-#include <string>
 #include <mutex>
-#include <fstream>
+#include <assert.h>
 #include <stdlib.h>
 
-#define LOG_INFO(info_type, message)                          \
-  std::cout << "PaddleFlags" << #info_type << ": " << message \
-            << " (at " << __FILE__ << ":" << __LINE__ << ")" << std::endl;
+namespace paddle {
+namespace flags {
 
-#define LOG_WARNING(message) LOG_INFO(Warning, message)
-#define LOG_ERROR(message) LOG_INFO(Error, message)
+std::stringstream& ErrorStream() {
+  static std::stringstream err_ss;
+  return err_ss;
+}
 
-namespace phi {
+#define LOG_FLAG_ERROR(message)                                 \
+  ErrorStream() << "paddle flags error: " << message << " (at " \
+                << __FILE__ << ":" << __LINE__ << ")" << std::endl
+
+void exit_with_errors() {
+  std::cerr << ErrorStream().str();
+  exit(-1);
+}
 
 enum class FlagType : uint8_t {
   BOOL = 0,
@@ -173,7 +181,7 @@ std::string FlagType2String(FlagType type) {
   case FlagType::STRING:
     return "string";
   default:
-    return "undefined type";
+    return "undefined";
   }
 }
 
@@ -208,20 +216,80 @@ std::string Value2String(const void* value, FlagType type) {
     return *val;
   }
   default:
-    return "undefined type";
+    LOG_FLAG_ERROR("flag type is undefined.");
+    exit_with_errors();
+  }
+}
+
+std::string Flag::Summary() const {
+  return "--" + name_ + ": " + FlagType2String(type_) + ", " + description_ + " (default: " + Value2String(default_value_, type_) + ")";
+}
+
+void Flag::SetValueFromString(const std::string& value) {
+  try {
+    switch (type_) {
+    case FlagType::BOOL: {
+      bool* val = static_cast<bool*>(value_);
+      if (value == "true" || value == "True" || value == "TRUE" || value == "1") {
+        *val = true;
+      } else if (value == "false" || value == "False" || value == "FALSE" || value == "0") {
+        *val = false;
+      } else {
+        throw std::invalid_argument(", please use [true, True, TRUE, 1] or [false, False, FALSE, 0].");
+      }
+      break;
+    }
+    case FlagType::INT32: {
+      int32_t* val = static_cast<int32_t*>(value_);
+      *val = std::stoi(value);
+      break;
+    }
+    case FlagType::UINT32: {
+      uint32_t* val = static_cast<uint32_t*>(value_);
+      *val = std::stoul(value);
+      break;
+    }
+    case FlagType::INT64: {
+      int64_t* val = static_cast<int64_t*>(value_);
+      *val = std::stoll(value);
+      break;
+    }
+    case FlagType::UINT64: {
+      uint64_t* val = static_cast<uint64_t*>(value_);
+      *val = std::stoull(value);
+      break;
+    }
+    case FlagType::DOUBLE: {
+      double* val = static_cast<double*>(value_);
+      *val = std::stod(value);
+      break;
+    }
+    case FlagType::STRING: {
+      std::string* val = static_cast<std::string*>(value_);
+      *val = value;
+      break;
+    }
+    default: {
+      LOG_FLAG_ERROR("flag type is undefined.");
+      exit_with_errors();
+    }
+    }
+  } catch (const std::exception& e) {
+    std::string error_msg = "value: \"" + value + "\" is invalid for "
+                            + FlagType2String(type_) + " flag \"" + name_ + "\"";
+    if (type_ == FlagType::BOOL) {
+      error_msg += e.what();
+    } else {
+      error_msg += ".";
+    }
+    LOG_FLAG_ERROR(error_msg);
   }
 }
 
 void FlagRegistry::RegisterFlag(Flag* flag) {
-  // LOG("INFO: register flag \"" + flag->name_ + "\" which defined in file: " + flag->file_);
-
-  // Defining a flag with the same name and type twice will raise a compile
-  // error. While defining a flag with the same name and different type will
-  // not (in different namespaces), but this is not allowed. So we check
-  // the flag name is whether registered here.
   auto iter = flags_.find(flag->name_);
   if (iter != flags_.end()) {
-    LOG("ERROR: flag \"" + flag->name_ + "\" has been defined in " + iter->second->file_);
+    LOG_FLAG_ERROR("illegal RegisterFlag, flag \"" + flag->name_ + "\" has been defined in " + iter->second->file_);
   } else {
     std::lock_guard<std::mutex> lock(mutex_);
     flags_[flag->name_] = flag;
@@ -230,11 +298,11 @@ void FlagRegistry::RegisterFlag(Flag* flag) {
 }
 
 void FlagRegistry::SetFlagValue(const std::string& name, const std::string& value) {
-  std::lock_guard<std::mutex> lock(mutex_);
   if (HasFlag(name)) {
+    std::lock_guard<std::mutex> lock(mutex_);
     flags_[name]->SetValueFromString(value);
   } else {
-    LOG_ERROR("flag \"" + name + "\" is not defined.");
+    LOG_FLAG_ERROR("illegal SetFlagValue, flag \"" + name + "\" is not defined.");
   }
 }
 
@@ -263,61 +331,6 @@ void FlagRegistry::PrintAllFlagValues(std::ostream& os) const {
   os << std::endl;
 }
 
-std::string Flag::Summary() const {
-  return "--" + name_ + ": " + FlagType2String(type_) + ", " + description_ + " (default: " + Value2String(default_value_, type_) + ")";
-}
-
-void Flag::SetValueFromString(const std::string& value) {
-  switch (type_) {
-  case FlagType::BOOL: {
-    bool* val = static_cast<bool*>(value_);
-    if (value == "true" || value == "True" || value == "TRUE" || value == "1") {
-      *val = true;
-    } else if (value == "false" || value == "False" || value == "FALSE" || value == "0") {
-      *val = false;
-    } else {
-      std::cout << "ERROR: Value: \"" + value + "\" is invalid for bool flag \"" + name_
-                << "\", please use [true, True, TRUE, 1] or [false, False, FALSE, 0].";
-    }
-    break;
-  }
-  case FlagType::INT32: {
-    int32_t* val = static_cast<int32_t*>(value_);
-    *val = std::stoi(value);
-    break;
-  }
-  case FlagType::UINT32: {
-    uint32_t* val = static_cast<uint32_t*>(value_);
-    *val = std::stoul(value);
-    break;
-  }
-  case FlagType::INT64: {
-    int64_t* val = static_cast<int64_t*>(value_);
-    *val = std::stoll(value);
-    break;
-  }
-  case FlagType::UINT64: {
-    uint64_t* val = static_cast<uint64_t*>(value_);
-    *val = std::stoull(value);
-    break;
-  }
-  case FlagType::DOUBLE: {
-    double* val = static_cast<double*>(value_);
-    *val = std::stod(value);
-    break;
-  }
-  case FlagType::STRING: {
-    std::string* val = static_cast<std::string*>(value_);
-    *val = value;
-    break;
-  }
-  default: {
-    std::cout << "ERROR: flag \"" + name_ + "\" has undefined type.";
-    break;
-  }
-  }
-}
-
 void PrintAllFlagHelp(bool to_file, const std::string& file_path) {
   if (to_file) {
     std::ofstream fout(file_path);
@@ -332,6 +345,7 @@ void PrintAllFlagValue() {
 }
 
 static std::string program_usage = "";
+static bool command_line_parsed = false;
 
 void SetUsageMessage(const std::string& usage) {
   program_usage = usage;
@@ -346,66 +360,73 @@ bool GetValueFromEnv(const std::string& name, std::string& value) {
   return true;
 }
 
-void SetFlagsFromEnv(const std::vector<std::string>& envs) {
+void SetFlagsFromEnv(const std::vector<std::string>& envs, bool error_fatal) {
   for (const std::string& env_var_name : envs) {
     std::string env_var_value;
     if (GetValueFromEnv(env_var_name, env_var_value)) {
-      FlagRegistry::Instance()->SetFlagValue(env_var_name, env_var_value);
-    } else {
-      LOG_WARNING("Environment variable \"" + env_var_name + "\" is not set.");
+      if (FlagRegistry::Instance()->HasFlag(env_var_name)) {
+        FlagRegistry::Instance()->SetFlagValue(env_var_name, env_var_value);
+      } else if (error_fatal) {
+        LOG_FLAG_ERROR("flag \"" + env_var_name + "\" is not defined.");
+      }
+    } else if (error_fatal) {
+      LOG_FLAG_ERROR("environment variable \"" + env_var_name + "\" is not set.");
     }
   }
 }
 
 void ParseCommandLineFlags(int* pargc, char*** pargv) {
-  // Pre-process arguments
+  command_line_parsed = true;
+
   assert(*pargc > 0);
   size_t argv_num = *pargc - 1;
   std::vector<std::string> argvs(*pargv + 1, *pargv + *pargc);
 
   // Parse arguments
+  std::string arg_format_help = "please follow the formats: \"--help\", \"--name=value\" or \"--name value\".";
+
   for (int i = 0; i < argv_num; i++) {
     const std::string& argv = argvs[i];
 
-    // Ignore the argvs that not start with "-"
     if (argv.size() < 2 || argv[0] != '-') {
-      std::cout << "ERROR: Invalid commandline argument: \"" << argv << "\""
-                << ", it should match the format: "
-                << "\"--help\", \"--name=value\" or \"--name value\"."
-                << std::endl;
-      continue;
+      LOG_FLAG_ERROR("invalid commandline argument: \"" + argv + "\", " + arg_format_help);
+      exit_with_errors();
     }
 
     // Parse arg name and value
     size_t hyphen_num = argv[1] == '-' ? 2 : 1;
-    string name, value;
+    std::string name, value;
     size_t split_pos = argv.find('=');
-    if (split_pos == string::npos) {
+    if (split_pos == std::string::npos) {
       name = argv.substr(hyphen_num);
       if (name.empty()) {
-        LOG_ERROR("invalid commandline argument: \"" + argv + "\"");
-        continue;
+        LOG_FLAG_ERROR("invalid commandline argument: \"" + argv + "\", " + arg_format_help);
+        exit_with_errors();
       }
 
       // Print help message
       if (name == "help" || name == "h") {
-        std::cout << "Usage: " << program_usage << std::endl;
+        if (program_usage.empty()) {
+          std::cout << "Usage: " << program_usage << std::endl;
+        } else {
+          std::cout << "Usage not set." << std::endl;
+        }
         FlagRegistry::Instance()->PrintAllFlagHelp(std::cout);
         exit(1);
       }
 
       // The argv format is "--name value", get the value from next argv.
       if (++i == argv_num) {
-        LOG_ERROR("expected value of commandline argument \"" + argv + "\" but found none.");
-        continue;
+        LOG_FLAG_ERROR("expected value of commandline argument \"" + argv + "\" but found none.");
+        exit_with_errors();
       } else {
         value = argvs[i];
       }
     } else {
       // The argv format is "--name=value"
       if (split_pos == hyphen_num or split_pos == argv.size() - 1) {
-        LOG_ERROR("invalid commandline argument: \"" + argv + "\"");
-        continue;
+        LOG_FLAG_ERROR("invalid commandline argument: \"" + argv + "\", " + arg_format_help);
+        exit_with_errors();
       }
       name = argv.substr(hyphen_num, split_pos - hyphen_num);
       value = argv.substr(split_pos + 1);
@@ -427,7 +448,8 @@ void ParseCommandLineFlags(int* pargc, char*** pargv) {
         if (value.back() == '"') {
           value.pop_back();
         } else {
-          LOG_ERROR("unexperted end of flag value while looking for matching `\"'")
+          LOG_FLAG_ERROR("unexperted end of flag \"" + name + "\" value while looking for matching `\"'");
+          exit_with_errors();
         }
       }
     }
@@ -437,23 +459,30 @@ void ParseCommandLineFlags(int* pargc, char*** pargv) {
       // a comma separated list of env var names.
       std::vector<std::string> env_var_names;
       for (size_t start_pos = 0, end_pos = 0;
-           end_pos != string::npos; start_pos = end_pos + 1) {
+           end_pos != std::string::npos; start_pos = end_pos + 1) {
         end_pos = value.find(',', start_pos);
         env_var_names.push_back(value.substr(start_pos, end_pos - start_pos));
       }
-      SetFlagsFromEnv(env_var_names);
+      if (name == "fromenv") {
+        SetFlagsFromEnv(env_var_names, true);
+      } else {
+        SetFlagsFromEnv(env_var_names, false);
+      }
       continue;
     }
 
     FlagRegistry* registry_ = FlagRegistry::Instance();
     if (!registry_->HasFlag(name)) {
-      std::cout << "Error: undefined flag named "
-                << "\"" << name << "\". " << std::endl;
+      LOG_FLAG_ERROR("flag \"" + name + "\" is not defined.");
       continue;
     } else {
       registry_->SetFlagValue(name, value);
     }
   }
+  if (!ErrorStream().str().empty()) {
+    exit_with_errors();
+  }
 }
 
-}  // namespace phi
+}
+}  // namespace paddle::flags
